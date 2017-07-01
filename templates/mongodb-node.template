@@ -7,6 +7,15 @@
             "Description": "VPC-ID of your existing Virtual Private Cloud (VPC) where you want to depoy MongoDB cluster.",
             "AllowedPattern": "vpc-[0-9a-z]{8}"
         },
+        "Environment": {
+            "Type": "String",
+            "Description": "production or staging",
+            "AllowedValues": ["staging", "production"]
+        },
+        "HostedZoneId": {
+            "Type": "AWS::Route53::HostedZone::Id",
+            "Description": "Which zone"
+        },
         "MongoDBServerSecurityGroupID": {
             "Description": "ID of the MongoDB Server Access Security Group (e.g., sg-7f16e910)",
             "Type": "AWS::EC2::SecurityGroup::Id"
@@ -183,6 +192,16 @@
                         "Value": "Private"
                     }
                 ]
+            }
+        },
+        "HostRecord":{
+            "Type": "AWS::Route53::RecordSet",
+            "Properties": {
+                "HostedZoneId": { "Ref": "HostedZoneId" },
+                "Name": { "Fn::Join": [".", [ {"Fn::Join": ["",["mongod-test", {"Ref": "NodeReplicaSetIndex"}]]}, "runtitle", "com"]]},
+                "Type": "A",
+                "TTL" : "900",
+                "ResourceRecords": [ { "Fn::GetAtt": ["ReplicaNodeInstance", "PrivateIp"]}]
             }
         },
         "ReplicaNodeInstance": {

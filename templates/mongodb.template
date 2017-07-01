@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "(000F) Deploy MongoDB Replica Set on AWS (Existing VPC)",
+    "Description": "Existing VPC Mongo Replicas",
     "Metadata": {
         "AWS::CloudFormation::Interface": {
             "ParameterGroups": [
@@ -13,7 +13,8 @@
                         "PrimaryNodeSubnet",
                         "Secondary0NodeSubnet",
                         "Secondary1NodeSubnet",
-                        "BastionSecurityGroupID"
+                        "BastionSecurityGroupID",
+                        "VpcAccessSecurityGroupID"
                     ]
                 },
                 {
@@ -48,11 +49,25 @@
                         "QSS3BucketName",
                         "QSS3KeyPrefix"
                     ]
+                },
+                {
+                    "Label":{
+                        "default": "Environment (staging||production)"
+                    },
+                    "Parameters": [
+                        "Environment"
+                    ]
                 }
             ],
             "ParameterLabels": {
+                "Environment": {
+                    "default": "Environment"
+                },
                 "BastionSecurityGroupID": {
                     "default": "Bastion Security Group ID"
+                },
+                "VpcAccessSecurityGroupID": {
+                    "default": "VPC Access Security Group ID"
                 },
                 "ClusterReplicaSetCount": {
                     "default": "Cluster Replica Set Count"
@@ -110,6 +125,10 @@
             "Description": "ID of the Bastion Security Group (e.g., sg-7f16e910)",
             "Type": "AWS::EC2::SecurityGroup::Id"
         },
+        "VpcAccessSecurityGroupID": {
+            "Description": "ID of the Security Group to make the cluster to the VPC",
+            "Type":"AWS::EC2::SecurityGroup::Id"
+        },
         "ClusterReplicaSetCount": {
             "Description": "Number of Replica Set Members. Choose 1 or 3",
             "Type": "String",
@@ -148,11 +167,11 @@
         "ReplicaShardIndex": {
             "Description": "Shard Index of this replica set",
             "Type": "String",
-            "Default": "0"
+            "Default": "runtitle_replica"
         },
         "QSS3BucketName": {
             "AllowedPattern": "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$",
-            "Default": "quickstart-reference",
+            "Default": "runtitle-mongod-config",
             "Type": "String",
             "ConstraintDescription": "Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-).",
             "Description": "S3 bucket name for the Quick Start assets. Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
@@ -177,7 +196,7 @@
         "VolumeType": {
             "Type": "String",
             "Description": "EBS Volume Type (data) to be attached to node in GBs [io1,gp2]",
-            "Default": "gp2",
+            "Default": "io1",
             "AllowedValues": [
                 "gp2",
                 "io1"
@@ -198,6 +217,7 @@
                 "m3.xlarge",
                 "m3.2xlarge",
                 "m4.large",
+                "m4.xlarge",
                 "m4.2xlarge",
                 "m4.4xlarge",
                 "m4.10xlarge",
@@ -236,6 +256,11 @@
             "Type": "AWS::EC2::Subnet::Id",
             "Description": "Subnet-ID the existing subnet in your VPC where you want to deploy Primary node(s).",
             "AllowedPattern": "subnet-[0-9a-z]{8}"
+        },
+        "Environment": {
+            "Type": "String",
+            "Description": "Is this staging or production?",
+            "AllowedValues": ["staging","production"]
         }
     },
     "Conditions": {
@@ -257,6 +282,10 @@
         }
     },
     "Mappings": {
+        "DNSHostedZoneMap":{
+            "staging": { "zoneId" : "Z3M345CVL0IUG1"},
+            "production": { "zoneId": Z3CUDKXXIX68V6"}
+        },
         "AWSAMIRegionMap": {
             "AMI": {
                 "AMZNLINUX": "amzn-ami-hvm-2017.03.1.20170623-x86_64-gp2"
@@ -313,6 +342,14 @@
                     "Ref": "VPC"
                 },
                 "GroupDescription": "Instances with access to MongoDB servers"
+            }
+        },
+        "VpcAccessSecurityGroup": {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "VpcId" : { "Ref" : "VPC" },
+                "GroupDescription" : "Enable SSH access via port 22",
+                "SecurityGroupIngress" : [ { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" } ]
             }
         },
         "MongoDBServerSecurityGroup": {
@@ -380,6 +417,14 @@
                         "ToPort": "28017",
                         "SourceSecurityGroupId": {
                             "Ref": "MongoDBServerSecurityGroup"
+                        }
+                    },
+                    {
+                        "IpProtocol":"tcp",
+                        "FromPort": "27017",
+                        "ToPort": "27017",
+                        "SourceSecurityGroupId":{
+                            "Ref": "VpcAccessSecurityGroup"
                         }
                     }
                 ]
@@ -480,6 +525,9 @@
                     ]
                 },
                 "Parameters": {
+                    "Environment": {
+                        "Ref": "Environment"
+                    },
                     "QSS3BucketName": {
                         "Ref": "QSS3BucketName"
                     },
@@ -540,6 +588,15 @@
                             "AMZNLINUX"
                         ]
                     },
+                    "HostedZoneId": {
+                        "Fn::FindInMap": [
+                            "DNSHostedZoneMap",
+                            {
+                                "Ref": "Environment"
+                            },
+                            "zoneId"
+                        ]
+                    },
                     "ReplicaNodeNameTag": "PrimaryReplicaNode0",
                     "NodeReplicaSetIndex": "0",
                     "ReplicaShardIndex": {
@@ -586,6 +643,9 @@
                     ]
                 },
                 "Parameters": {
+                    "Environment": {
+                        "Ref": "Environment"
+                    },
                     "QSS3BucketName": {
                         "Ref": "QSS3BucketName"
                     },
@@ -646,6 +706,15 @@
                             "AMZNLINUX"
                         ]
                     },
+                    "HostedZoneId": {
+                        "Fn::FindInMap": [
+                            "DNSHostedZoneMap",
+                            {
+                                "Ref": "Environment"
+                            },
+                            "zoneId"
+                        ]
+                    },
                     "ReplicaNodeNameTag": "SecondaryReplicaNode0",
                     "NodeReplicaSetIndex": "1",
                     "ReplicaShardIndex": {
@@ -693,6 +762,9 @@
                     ]
                 },
                 "Parameters": {
+                    "Environment": {
+                        "Ref": "Environment"
+                    },
                     "QSS3BucketName": {
                         "Ref": "QSS3BucketName"
                     },
@@ -751,6 +823,15 @@
                                 "Ref": "AWS::Region"
                             },
                             "AMZNLINUX"
+                        ]
+                    },
+                    "HostedZoneId": {
+                        "Fn::FindInMap": [
+                            "DNSHostedZoneMap",
+                            {
+                                "Ref": "Environment"
+                            },
+                            "zoneId"
                         ]
                     },
                     "ReplicaNodeNameTag": "SecondaryReplicaNode1",
